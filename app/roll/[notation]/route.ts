@@ -32,7 +32,6 @@ const schema = z.object({
 type Roll = z.infer<typeof schema>;
 
 export const GET = pipe(validateParams(schema, true), async (request: NextRequest & {data: Roll}) => {
-  console.log(request.data, request.data.notation);
   const {num, sides, mod} = request.data.notation;
   const engine = MersenneTwister19937.autoSeed();
   const distribution = integer(1, sides);
