@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background-start-rgb: #3a86ff;
+  --background-mid-rgb: #ff006e;
+  --background-end-rgb: #ffbe0b;
+}
+
+body {
+  color: oklch(var(--bc));
+  background: oklch(var(--pc));
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+.hero-gradient {
+  background: rgba(132, 105, 214, 1);
+  background: linear-gradient(
+    in oklch to bottom right,
+    var(--background-start-rgb),
+    var(--background-mid-rgb),
+    var(--background-end-rgb)
+  );
+  background-size: 400% 400%;
+  animation: gradient 30s ease infinite;
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-gradient {
+    animation: none;
+  }
+}

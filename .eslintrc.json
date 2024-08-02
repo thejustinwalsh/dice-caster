@@ -12,7 +12,12 @@
     "import/order": [
       "error",
       {
-        "groups": [["builtin", "external"], ["internal", "sibling", "parent", "index"], ["object", "unknown"], "type"],
+        "groups": [
+          ["builtin", "external"],
+          ["internal", "sibling", "parent", "index"],
+          ["object", "unknown"],
+          "type"
+        ],
         "pathGroups": [
           {
             "pattern": "react*",
@@ -42,6 +47,12 @@
           "order": "asc",
           "caseInsensitive": true
         }
+      }
+    ],
+    "react-hooks/exhaustive-deps": [
+      "warn",
+      {
+        "additionalHooks": "(useAsyncCallback)"
       }
     ]
   }
