@@ -2,6 +2,14 @@
 
 > Dice rolling api with nice distribution 🎲
 
+## ENV
+
+```env
+HOST=https://<origin>
+REDIS_URL=https://<upstash-project>.upstash.io
+REDIS_TOKEN=<upstash-token>
+```
+
 ## API
 
 ### GET /api/roll/`{dice}`d`{faces}`+`{modifier}`
