@@ -1,3 +1,4 @@
+import {cookies} from 'next/headers';
 import {NextRequest, NextResponse} from 'next/server';
 import {pipe} from 'next-route-handler-pipe';
 import {
@@ -10,6 +11,7 @@ import {AuthenticationResponseJSON} from '@simplewebauthn/types';
 import {z} from 'zod';
 
 import {challenges, users} from '@/db';
+import * as jwt from '@/lib/jwt';
 import {validateBody} from '@/lib/validation';
 import {origin, rpID} from '../register/route';
 
@@ -37,6 +39,18 @@ const schema = z.object({
 
 type AuthData = z.infer<typeof schema>;
 
+/**
+ * @openapi
+ * /api/auth/authenticate:
+ *   get:
+ *     description: Start the authentication process for an existing user
+ *     tags: [auth]
+ *     produces:
+ *       - application/json
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 export const GET = async (req: NextRequest) => {
   const options = await generateAuthenticationOptions({
     rpID: rpID,
@@ -53,6 +67,33 @@ export const GET = async (req: NextRequest) => {
   return NextResponse.json(options, {status: 200});
 };
 
+/**
+ * @openapi
+ * /api/auth/authenticate:
+ *   post:
+ *     description: Authenticate an existing user with a WebAuthn credential
+ *     tags: [auth]
+ *     produces:
+ *       - application/json
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *         headers:
+ *           Set-Cookie:
+ *             description: Refresh token
+ *             schema:
+ *               type: string
+ *               example: refresh-token=abcde12345; Path=/; HttpOnly
+ *       400:
+ *         description: Registration error
+ */
 export const POST = pipe(validateBody(schema), async (req: NextRequest & {data: AuthData}) => {
   const {data} = req;
   const clientData = decodeClientDataJSON(data.response.clientDataJSON);
@@ -71,8 +112,6 @@ export const POST = pipe(validateBody(schema), async (req: NextRequest & {data: 
     console.log('Authentication error', user, data);
     return NextResponse.json({error: 'authentication error'}, {status: 400});
   }
-
-  console.log({clientData, data, user, passkey});
 
   let assertion: VerifiedAuthenticationResponse | null = null;
   try {
@@ -108,6 +147,13 @@ export const POST = pipe(validateBody(schema), async (req: NextRequest & {data: 
     // TODO: Flag this as a potential replay attack
   }
 
-  // TODO: Return a JWT token that can be used to access protected resources
-  return NextResponse.json({}, {status: 200});
+  cookies().set('refresh-token', jwt.token('refresh', {user: {id: user.id, name: user.name}}), {
+    httpOnly: true,
+    sameSite: 'strict',
+  });
+
+  return NextResponse.json(
+    {token: jwt.token('access', {user: {id: user.id, name: user.name}})},
+    {status: 200},
+  );
 });

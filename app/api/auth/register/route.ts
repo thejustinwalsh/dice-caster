@@ -1,3 +1,4 @@
+import {cookies} from 'next/headers';
 import {NextRequest, NextResponse} from 'next/server';
 import {pipe} from 'next-route-handler-pipe';
 import {
@@ -9,6 +10,7 @@ import {decodeClientDataJSON, isoBase64URL} from '@simplewebauthn/server/helpers
 import {z} from 'zod';
 
 import {challenges, users} from '@/db';
+import * as jwt from '@/lib/jwt';
 import {validateBody, validateSearch} from '@/lib/validation';
 
 import type {RegistrationResponseJSON} from '@simplewebauthn/types';
@@ -85,11 +87,13 @@ export const HEAD = pipe(
  *   get:
  *     description: Start the registration process for a new user
  *     tags: [auth]
+ *     security:
+ *       - BearerAuth: []
  *     produces:
  *       - application/json
  *     parameters:
  *       - name: user
- *         description: User's name
+ *         description: User id
  *         in: query
  *         required: true
  *         type: string
@@ -103,11 +107,16 @@ export const GET = pipe(
   validateSearch(schemaParams),
   async (req: NextRequest & {data: z.infer<typeof schemaParams>}) => {
     const {user} = req.data;
+    const auth = req.headers.get('authorization')?.startsWith('Bearer ')
+      ? req.headers.get('authorization')?.split(' ')[1]
+      : null;
 
-    // TODO: We can only update a user if that user has a JWT for their account giving them permission to update
-    // TODO: Without a JWT we can only create new users
-    const userExists = await users.exists(user);
-    if (userExists) return NextResponse.json({error: 'user exists'}, {status: 400});
+    const existingUser = await users.get(user);
+    const authUser = auth
+      ? jwt.verify<{user: {id: string; name?: string}}>('access', auth).user
+      : null;
+    if (existingUser.id !== authUser?.id)
+      return NextResponse.json({error: 'user exists'}, {status: 400});
 
     const options = await generateRegistrationOptions({
       rpName,
@@ -116,7 +125,12 @@ export const GET = pipe(
       timeout: 60000,
       // Don't prompt users for additional information about the authenticator.
       attestationType: 'none',
-      // TODO: excludeCredentials: user.passkeys.map(passkey => ({id: passkey.credentialID, type: 'public-key', transports: passkey.transports})),
+      // Exclude existing credentials from the list of allowed credentials.
+      excludeCredentials: existingUser.passkeys.map(passkey => ({
+        id: passkey.credentialID,
+        type: 'public-key',
+        transports: passkey.transports,
+      })),
       authenticatorSelection: {
         residentKey: 'preferred',
         userVerification: 'preferred',
@@ -145,11 +159,26 @@ export const GET = pipe(
  *   post:
  *     description: Register a new user with a WebAuthn credential
  *     tags: [auth]
+ *     security:
+ *       - BearerAuth: []
  *     produces:
  *       - application/json
  *     responses:
  *       200:
  *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *         headers:
+ *           Set-Cookie:
+ *             description: Refresh token
+ *             schema:
+ *               type: string
+ *               example: refresh-token=abcde12345; Path=/; HttpOnly
  *       400:
  *         description: Registration error
  */
@@ -157,6 +186,9 @@ export const POST = pipe(
   validateBody(schemaPOST),
   async (req: NextRequest & {data: z.infer<typeof schemaPOST>}) => {
     const {data} = req;
+    const auth = req.headers.get('authorization')?.startsWith('Bearer ')
+      ? req.headers.get('authorization')?.split(' ')[1]
+      : null;
 
     // Ensure this challenge is valid
     const validChallenge = await challenges.getdel(
@@ -167,10 +199,14 @@ export const POST = pipe(
       return NextResponse.json({error: 'registration error'}, {status: 400});
     }
 
-    // TODO: We can only update a user if that user has a JWT for their account giving them permission to update
-    // TODO: Without a JWT we can only create new users
+    // Allow the user to update their registration if they are the owner of the account
     const userExists = await users.exists(validChallenge.id);
-    if (userExists) return NextResponse.json({error: 'user exists'}, {status: 400});
+    // TODO: Need wrapper around jwt.verify to handle errors
+    const isOwner = auth
+      ? jwt.verify<{user: {id: string; name?: string}}>('access', auth).user.id ===
+        validChallenge.id
+      : false;
+    if (userExists && !isOwner) return NextResponse.json({error: 'user exists'}, {status: 400});
 
     // Verify the registration response
     let assertion: VerifiedRegistrationResponse | null = null;
@@ -218,7 +254,14 @@ export const POST = pipe(
       if (!update) return NextResponse.json({error: 'registration error'}, {status: 400});
     }
 
-    // TODO: Return a JWT token that can be used to access protected resources
-    return NextResponse.json({}, {status: 200});
+    cookies().set('refresh-token', jwt.token('refresh', {user: {id: user.id, name: user.name}}), {
+      httpOnly: true,
+      sameSite: 'strict',
+    });
+
+    return NextResponse.json(
+      {token: jwt.token('access', {user: {id: user.id, name: user.name}})},
+      {status: 200},
+    );
   },
 );
