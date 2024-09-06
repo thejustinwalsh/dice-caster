@@ -37,6 +37,49 @@ const schema = z.object({
 
 type RollData = z.infer<typeof schema>;
 
+/**
+ * @openapi
+ * /api/roll/{num}d{sides}{mod}:
+ *   get:
+ *     description: Roll a number of dice with a given notation
+ *     tags: [roll]
+ *     produces:
+ *       - application/json
+ *     parameters:
+ *       - name: num
+ *         in: path
+ *         description: Number of dice to roll
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - name: sides
+ *         in: path
+ *         description: Number of sides on each die
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - name: mod
+ *         in: path
+ *         description: Modifier to add or subtract from the total
+ *         required: false
+ *         allowReserved: true
+ *         allowEmptyValue: true
+ *         schema:
+ *           type: string
+ *           pattern: ^[\+\-]\d+$
+ *         examples:
+ *           zero:
+ *            summary: No Modifier
+ *           postive:
+ *             value: "+1"
+ *             summary: Add 1 to the total
+ *           negative:
+ *             value: "-1"
+ *             summary: Subtract 1 from the total
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 export const GET = pipe(
   validateParams(schema, true),
   async (req: NextRequest & {data: RollData}) => {
